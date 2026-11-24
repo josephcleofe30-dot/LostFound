@@ -173,6 +173,7 @@ onAuthStateChanged(auth, async (user) => {
   if (!user) {
     currentUser = null;
     stopAdminListeners();
+    stopUserListeners();
     setSignedInChrome(null);
     showView("auth");
     return;
@@ -197,6 +198,7 @@ onAuthStateChanged(auth, async (user) => {
     } else {
       showView("user");
       refreshLostLimit();
+      startUserListeners();
     }
   } catch (err) {
     console.error("Could not load profile:", err);
@@ -219,9 +221,11 @@ document.querySelectorAll("#view-user .tab").forEach((tab) => {
       t.classList.toggle("active", active);
       t.setAttribute("aria-selected", String(active));
     });
-    $("panel-found").hidden = tab.dataset.tab !== "found";
-    $("panel-lost").hidden = tab.dataset.tab !== "lost";
+    ["found", "lost", "activity"].forEach((name) => {
+      $("panel-" + name).hidden = tab.dataset.tab !== name;
+    });
     if (tab.dataset.tab === "lost") refreshLostLimit();
+    updateActivityPill();
   });
 });
 
@@ -449,6 +453,7 @@ $("lostForm").addEventListener("submit", async (e) => {
       locationLost: f.place,
       timeLost: Timestamp.fromDate(new Date(f.when)),
       imageUrls,
+      status: "OPEN",
       createdAt: serverTimestamp(),
     });
     $("lostForm").reset();
@@ -625,9 +630,10 @@ function renderPending() {
 
 /* ---------- Approved items (privacy-first cards) ---------- */
 const norm = (s) => (s || "").trim().toLowerCase();
+const isOpen = (r) => !r.status || r.status === "OPEN";
 
 function matchesFor(item) {
-  const hits = lostRequests.filter((r) => norm(r.itemType) === norm(item.itemType) && norm(r.primaryColor) === norm(item.primaryColor));
+  const hits = lostRequests.filter((r) => isOpen(r) && norm(r.itemType) === norm(item.itemType) && norm(r.primaryColor) === norm(item.primaryColor));
   const score = (r) =>
     (norm(r.serialNumber) && norm(r.serialNumber) === norm(item.serialNumber) ? 2 : 0) +
     (norm(r.brandModel) && norm(r.brandModel) === norm(item.brandModel) ? 1 : 0);
@@ -698,11 +704,18 @@ function lostCard(item, req) {
   confirmBtn.addEventListener("click", () => {
     if (!confirm("Confirm this person as the real owner? The item will be marked as matched.")) return;
     withBusy([confirmBtn], async () => {
-      await updateDoc(doc(db, "found_items", item.id), {
+      const batch = writeBatch(db);
+      batch.update(doc(db, "found_items", item.id), {
         status: "MATCHED",
         matchedLostRequestId: req.id,
         matchedAt: serverTimestamp(),
       });
+      batch.update(doc(db, "lost_requests", req.id), {
+        status: "MATCHED",
+        matchedFoundItemId: item.id,
+        matchedAt: serverTimestamp(),
+      });
+      await batch.commit();
       showHandover(item, req);
     });
   });
@@ -747,18 +760,33 @@ document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("matc
 function renderMatched() {
   const list = $("matchedList");
   if (!matchedItems.length) {
-    list.replaceChildren(el("p", { class: "empty", text: "No confirmed matches yet." }));
+    list.replaceChildren(el("p", { class: "empty", text: "No confirmed matches waiting for handover." }));
     return;
   }
   list.replaceChildren(...matchedItems.map((item) => {
     const info = el("div");
     const reveal = el("button", { class: "btn btn-outline btn-small", type: "button", text: "Show contacts" });
+    const returned = el("button", { class: "btn btn-primary btn-small", type: "button", text: "Mark as returned" });
+
     reveal.addEventListener("click", () => withBusy([reveal], async () => {
       const snap = await getDoc(doc(db, "lost_requests", item.matchedLostRequestId));
       const owner = snap.exists() ? snap.data().contactNumber : "Request no longer available";
       info.replaceChildren(detailList([["Owner contact", owner], ["Finder contact", item.contactNumber]]));
       reveal.remove();
     }));
+
+    returned.addEventListener("click", () => {
+      if (!confirm("Mark this item as returned to its owner? It will leave this list.")) return;
+      withBusy([returned, reveal], async () => {
+        const batch = writeBatch(db);
+        batch.update(doc(db, "found_items", item.id), { status: "RETURNED", returnedAt: serverTimestamp() });
+        if (item.matchedLostRequestId) {
+          batch.update(doc(db, "lost_requests", item.matchedLostRequestId), { status: "RESOLVED" });
+        }
+        await batch.commit();
+      });
+    });
+
     return el("article", { class: "item-card" },
       el("img", { class: "item-thumb", src: item.imageUrls?.[0] || "", alt: item.itemType + " photo", loading: "lazy" }),
       el("div", { class: "item-body" },
@@ -766,7 +794,119 @@ function renderMatched() {
         el("p", { class: "muted", text: "Matched " + fmtTime(item.matchedAt) }),
         info,
         reveal,
+        returned,
       ),
     );
   }));
+}
+
+/* =====================================================================
+   My requests (user): status tracking, match notification, mark resolved
+   ===================================================================== */
+
+let userUnsubs = [];
+let myFound = [];
+let myLost = [];
+
+function startUserListeners() {
+  if (userUnsubs.length || !currentUser) return;
+  const mine = (name, onData, listId) => onSnapshot(
+    query(collection(db, name), where("userId", "==", currentUser.uid)),
+    (snap) => { onData(snap.docs.map((d) => ({ id: d.id, ...d.data() })).sort(newestFirst)); renderMyActivity(); },
+    (err) => {
+      console.error(err);
+      $(listId).replaceChildren(el("p", { class: "empty", text: "Couldn't load your requests. Check your connection." }));
+    },
+  );
+  userUnsubs = [
+    mine("lost_requests", (list) => { myLost = list; }, "myLostList"),
+    mine("found_items", (list) => { myFound = list; }, "myFoundList"),
+  ];
+}
+
+function stopUserListeners() {
+  userUnsubs.forEach((unsub) => unsub());
+  userUnsubs = [];
+  myFound = [];
+  myLost = [];
+}
+
+// Pill on the tab counts matches the user hasn't looked at yet
+function seenMatches() {
+  try { return new Set(JSON.parse(localStorage.getItem("seenMatches:" + currentUser.uid) || "[]")); }
+  catch (_) { return new Set(); }
+}
+
+function updateActivityPill() {
+  const pill = $("activityCount");
+  if (!currentUser) { pill.hidden = true; return; }
+  const matched = myLost.filter((r) => r.status === "MATCHED");
+  const seen = seenMatches();
+  if (!$("panel-activity").hidden) {
+    matched.forEach((r) => seen.add(r.id));
+    try { localStorage.setItem("seenMatches:" + currentUser.uid, JSON.stringify([...seen])); } catch (_) { /* ignore */ }
+  }
+  const unseen = matched.filter((r) => !seen.has(r.id)).length;
+  pill.textContent = unseen;
+  pill.hidden = unseen === 0;
+}
+
+function chip(text, kind) { return el("span", { class: "badge status-" + kind, text }); }
+
+const LOST_STATUS = {
+  OPEN: ["Searching", "wait"],
+  MATCHED: ["Match found", "good"],
+  RESOLVED: ["Resolved", "done"],
+};
+const FOUND_STATUS = {
+  PENDING: ["Waiting for admin review", "wait"],
+  APPROVED: ["Approved, admins are looking for the owner", "good"],
+  REJECTED: ["Rejected", "bad"],
+  MATCHED: ["Owner found, handover being arranged", "good"],
+  RETURNED: ["Returned to owner", "done"],
+};
+
+function renderMyActivity() {
+  updateActivityPill();
+
+  const lostList = $("myLostList");
+  lostList.replaceChildren(...(myLost.length ? myLost.map((r) => {
+    const [label, kind] = LOST_STATUS[r.status || "OPEN"] || LOST_STATUS.OPEN;
+    const card = el("article", { class: "review-card" },
+      el("h3", { text: `${r.primaryColor} ${r.itemType}` }),
+      chip(label, kind),
+      el("p", { class: "muted", text: "Reported " + fmtTime(r.createdAt) }),
+      detailList([
+        ["Brand or model", r.brandModel],
+        ["Lost at", r.locationLost],
+        ["Lost on", fmtTime(r.timeLost)],
+      ]),
+    );
+    if (r.status === "MATCHED") {
+      card.append(el("div", { class: "handover" },
+        el("p", { text: "Good news: an admin found a match for your item." }),
+        el("p", { class: "muted", text: `They will contact you at ${r.contactNumber} to arrange the handover.` }),
+      ));
+    }
+    if (!r.status || r.status === "OPEN") {
+      const btn = el("button", { class: "btn btn-outline btn-small", type: "button", text: "I found it, close this request" });
+      btn.addEventListener("click", () => {
+        if (!confirm("Close this request? Admins will stop matching it to found items.")) return;
+        withBusy([btn], () => updateDoc(doc(db, "lost_requests", r.id), { status: "RESOLVED" }));
+      });
+      card.append(el("div", { class: "actions" }, btn));
+    }
+    return card;
+  }) : [el("p", { class: "muted", text: "You haven't sent any lost item requests." })]));
+
+  const foundList = $("myFoundList");
+  foundList.replaceChildren(...(myFound.length ? myFound.map((f) => {
+    const [label, kind] = FOUND_STATUS[f.status] || ["Unknown", "done"];
+    return el("article", { class: "review-card" },
+      el("h3", { text: `${f.primaryColor} ${f.itemType}` }),
+      chip(label, kind),
+      el("p", { class: "muted", text: "Reported " + fmtTime(f.createdAt) }),
+      detailList([["Found at", f.locationFound], ["Found on", fmtTime(f.timeFound)]]),
+    );
+  }) : [el("p", { class: "muted", text: "You haven't reported any found items." })]));
 }
