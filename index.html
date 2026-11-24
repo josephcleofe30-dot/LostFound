@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lost &amp; Found</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- NAVBAR -->
+  <header class="navbar">
+    <a class="logo" href="#" aria-label="Lost and Found home">
+      <span class="logo-tag" aria-hidden="true"></span>
+      <span class="logo-text">Lost &amp; Found</span>
+    </a>
+    <nav class="nav-links" id="navLinks" hidden>
+      <span class="nav-user" id="navUser"></span>
+    </nav>
+    <div class="nav-actions">
+      <button class="btn btn-ghost" id="themeToggle" type="button" aria-label="Toggle dark mode">
+        <span id="themeIcon">Dark</span>
+      </button>
+      <button class="btn btn-outline" id="logoutBtn" type="button" hidden>Log out</button>
+    </div>
+  </header>
+
+  <main class="container">
+
+    <!-- LOADING (skeleton) -->
+    <section id="view-loading" class="view" aria-busy="true" aria-live="polite">
+      <span class="sr-only">Loading…</span>
+      <div aria-hidden="true">
+        <div class="sk sk-title"></div>
+        <div class="sk sk-tabs"></div>
+        <div class="panel sk-panel">
+          <div class="sk sk-h3"></div>
+          <div class="sk sk-line sk-line-wide"></div>
+          <div class="sk-photos">
+            <div class="sk sk-photo"></div><div class="sk sk-photo"></div>
+            <div class="sk sk-photo"></div><div class="sk sk-photo"></div>
+          </div>
+          <div class="sk sk-label"></div>
+          <div class="sk sk-input"></div>
+          <div class="sk sk-label"></div>
+          <div class="sk sk-input"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- AUTH -->
+    <section id="view-auth" class="view" hidden>
+      <div class="auth-layout">
+        <div class="auth-intro">
+          <h1>Find what's yours.<br>Return what isn't.</h1>
+          <p class="lead">Sign in to report a found item or search for something you lost.</p>
+        </div>
+
+        <div class="auth-card">
+          <button class="btn btn-google" id="googleBtn" type="button">
+            <svg class="g-icon" width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.8 2.4 30.3 0 24 0 14.6 0 6.5 5.4 2.6 13.2l7.9 6.1C12.4 13.6 17.7 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.7c-.6 3-2.3 5.5-4.8 7.2l7.5 5.8c4.4-4.1 7.1-10.1 7.1-17.5z"/><path fill="#FBBC05" d="M10.5 28.7c-.5-1.4-.8-3-.8-4.7s.3-3.2.8-4.7l-7.9-6.1C.9 16.4 0 20.1 0 24s.9 7.6 2.6 10.8l7.9-6.1z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.5-5.8c-2.1 1.4-4.8 2.3-8.4 2.3-6.3 0-11.6-4.1-13.5-9.8l-7.9 6.1C6.5 42.6 14.6 48 24 48z"/></svg>
+            Continue with Google
+          </button>
+
+          <div class="divider"><span>or use email</span></div>
+
+          <form id="authForm" novalidate>
+            <label for="email">Email</label>
+            <input id="email" type="email" autocomplete="email" required>
+
+            <label for="password">Password</label>
+            <input id="password" type="password" autocomplete="current-password" minlength="6" required>
+
+            <p class="form-error" id="authError" role="alert" hidden></p>
+
+            <button class="btn btn-primary" id="authSubmit" type="submit">Sign in</button>
+          </form>
+
+          <p class="switch-mode">
+            <span id="switchText">No account yet?</span>
+            <button class="link-btn" id="switchBtn" type="button">Create one</button>
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- USER DASHBOARD -->
+    <section id="view-user" class="view" hidden>
+      <h2>Your dashboard</h2>
+      <div class="tabs" role="tablist">
+        <button class="tab active" type="button" role="tab" data-tab="found">Submit found item</button>
+        <button class="tab" type="button" role="tab" data-tab="lost">Submit lost item request</button>
+        <button class="tab" type="button" role="tab" data-tab="activity">My requests <span class="count-pill" id="activityCount" hidden>0</span></button>
+      </div>
+
+      <!-- Found item -->
+      <div class="panel" id="panel-found" role="tabpanel">
+        <h3>Report a found item</h3>
+        <p class="muted">Take four photos from different angles. An admin reviews every report before it is listed.</p>
+        <form id="foundForm" novalidate>
+          <fieldset class="photo-fieldset">
+            <legend>Photos <span class="req">(all 4 required)</span></legend>
+            <div class="photo-grid">
+              <label class="photo-slot"><input type="file" accept="image/*" capture="environment" data-slot="0"><span class="slot-label">Front</span><img alt="" hidden></label>
+              <label class="photo-slot"><input type="file" accept="image/*" capture="environment" data-slot="1"><span class="slot-label">Back</span><img alt="" hidden></label>
+              <label class="photo-slot"><input type="file" accept="image/*" capture="environment" data-slot="2"><span class="slot-label">Side</span><img alt="" hidden></label>
+              <label class="photo-slot"><input type="file" accept="image/*" capture="environment" data-slot="3"><span class="slot-label">Close-up</span><img alt="" hidden></label>
+            </div>
+          </fieldset>
+
+          <label for="foundContact">Contact number <span class="req">(required)</span></label>
+          <input id="foundContact" type="tel" inputmode="tel" autocomplete="tel" placeholder="e.g. 0917 123 4567" required>
+
+          <div class="field-row">
+            <div>
+              <label for="foundType">Item type <span class="req">(required)</span></label>
+              <select id="foundType" required>
+                <option value="">Choose…</option>
+                <option>Phone</option>
+                <option>Wallet</option>
+                <option>Keys</option>
+                <option>ID or card</option>
+                <option>Bag</option>
+                <option>Laptop or tablet</option>
+                <option>Jewelry or watch</option>
+                <option>Clothing</option>
+                <option>Other</option>
+              </select>
+            </div>
+            <div>
+              <label for="foundColor">Primary color <span class="req">(required)</span></label>
+              <select id="foundColor" required>
+                <option value="">Choose…</option>
+                <option>Black</option>
+                <option>White</option>
+                <option>Gray</option>
+                <option>Red</option>
+                <option>Orange</option>
+                <option>Yellow</option>
+                <option>Green</option>
+                <option>Blue</option>
+                <option>Purple</option>
+                <option>Pink</option>
+                <option>Brown</option>
+                <option>Gold or silver</option>
+                <option>Multicolor</option>
+              </select>
+            </div>
+          </div>
+
+          <label for="foundBrand">Brand or model</label>
+          <input id="foundBrand" type="text" maxlength="100">
+
+          <label for="foundSerial">Serial, IMEI, ID number or other unique identifier</label>
+          <input id="foundSerial" type="text" maxlength="100">
+
+          <label for="foundMarks">Private marks and details</label>
+          <textarea id="foundMarks" rows="3" maxlength="500" placeholder="Scratches, stickers, what is inside…"></textarea>
+
+          <label for="foundLocation">Location found <span class="req">(required)</span></label>
+          <input id="foundLocation" type="text" maxlength="150" placeholder="e.g. Around Daet, Library 2nd floor" required>
+
+          <label for="foundTime">Date and time found <span class="req">(required)</span></label>
+          <input id="foundTime" type="datetime-local" required>
+
+          <p class="form-error" id="foundError" role="alert" hidden></p>
+          <p class="form-ok" id="foundOk" role="status" hidden></p>
+          <button class="btn btn-primary" id="foundSubmit" type="submit">Submit found item</button>
+        </form>
+      </div>
+
+      <!-- Lost item -->
+      <div class="panel" id="panel-lost" role="tabpanel" hidden>
+        <h3>Search for a lost item</h3>
+        <p class="muted">Your request goes straight to the admins who match found items to owners. You can send 3 requests per day.</p>
+        <p class="limit-note" id="lostLimitNote" role="status"></p>
+        <form id="lostForm" novalidate>
+          <fieldset class="photo-fieldset">
+            <legend>Photos <span class="opt">(optional, up to 4)</span></legend>
+            <input id="lostPhotos" type="file" accept="image/*" multiple>
+            <div class="thumb-row" id="lostThumbs"></div>
+          </fieldset>
+
+          <label for="lostContact">Contact number <span class="req">(required)</span></label>
+          <input id="lostContact" type="tel" inputmode="tel" autocomplete="tel" placeholder="e.g. 0917 123 4567" required>
+
+          <div class="field-row">
+            <div>
+              <label for="lostType">Item type <span class="req">(required)</span></label>
+              <select id="lostType" required>
+                <option value="">Choose…</option>
+                <option>Phone</option>
+                <option>Wallet</option>
+                <option>Keys</option>
+                <option>ID or card</option>
+                <option>Bag</option>
+                <option>Laptop or tablet</option>
+                <option>Jewelry or watch</option>
+                <option>Clothing</option>
+                <option>Other</option>
+              </select>
+            </div>
+            <div>
+              <label for="lostColor">Primary color <span class="req">(required)</span></label>
+              <select id="lostColor" required>
+                <option value="">Choose…</option>
+                <option>Black</option>
+                <option>White</option>
+                <option>Gray</option>
+                <option>Red</option>
+                <option>Orange</option>
+                <option>Yellow</option>
+                <option>Green</option>
+                <option>Blue</option>
+                <option>Purple</option>
+                <option>Pink</option>
+                <option>Brown</option>
+                <option>Gold or silver</option>
+                <option>Multicolor</option>
+              </select>
+            </div>
+          </div>
+
+          <label for="lostBrand">Brand or model</label>
+          <input id="lostBrand" type="text" maxlength="100">
+
+          <label for="lostSerial">Serial, IMEI, ID number or other unique identifier</label>
+          <input id="lostSerial" type="text" maxlength="100">
+
+          <label for="lostMarks">Private marks and details</label>
+          <textarea id="lostMarks" rows="3" maxlength="500" placeholder="Scratches, stickers, what is inside…"></textarea>
+
+          <label for="lostLocation">Location lost <span class="req">(required)</span></label>
+          <input id="lostLocation" type="text" maxlength="150" placeholder="e.g. Jeepney from Daet to Naga" required>
+
+          <label for="lostTime">Date and time lost <span class="req">(required)</span></label>
+          <input id="lostTime" type="datetime-local" required>
+
+          <p class="form-error" id="lostError" role="alert" hidden></p>
+          <p class="form-ok" id="lostOk" role="status" hidden></p>
+          <button class="btn btn-primary" id="lostSubmit" type="submit">Send lost item request</button>
+        </form>
+      </div>
+
+      <!-- My requests -->
+      <div class="panel" id="panel-activity" role="tabpanel" hidden>
+        <h3>My requests</h3>
+        <p class="muted">Track your reports and see when an admin finds a match.</p>
+        <h4>Lost item requests</h4>
+        <div class="stack" id="myLostList"></div>
+        <h4>Found item reports</h4>
+        <div class="stack" id="myFoundList"></div>
+      </div>
+    </section>
+
+    <!-- ADMIN DASHBOARD -->
+    <section id="view-admin" class="view" hidden>
+      <h2>Admin dashboard</h2>
+      <div class="tabs" role="tablist">
+        <button class="tab active" type="button" role="tab" data-atab="approved">Approved items &amp; matches</button>
+        <button class="tab" type="button" role="tab" data-atab="pending">Pending found items <span class="count-pill" id="pendingCount" hidden>0</span></button>
+        <button class="tab" type="button" role="tab" data-atab="matched">Matched</button>
+      </div>
+
+      <div id="admin-panel-approved" role="tabpanel">
+        <div class="item-grid" id="approvedList"></div>
+      </div>
+      <div id="admin-panel-pending" role="tabpanel" hidden>
+        <div class="stack" id="pendingList"></div>
+      </div>
+      <div id="admin-panel-matched" role="tabpanel" hidden>
+        <div class="item-grid" id="matchedList"></div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- SUSPENDED MODAL -->
+  <div class="modal-backdrop" id="banModal" hidden>
+    <div class="modal" role="alertdialog" aria-modal="true" aria-labelledby="banTitle" aria-describedby="banMsg">
+      <h2 id="banTitle">Account suspended</h2>
+      <p id="banMsg">Your account has been suspended for policy violations.</p>
+      <button class="btn btn-primary" id="banClose" type="button">Back to sign in</button>
+    </div>
+  </div>
+
+  <!-- MATCH MODAL -->
+  <div class="modal-backdrop" id="matchModal" hidden>
+    <div class="modal modal-wide" role="dialog" aria-modal="true" aria-labelledby="matchTitle">
+      <div class="modal-head">
+        <h2 id="matchTitle">Possible match</h2>
+        <button class="btn btn-ghost" id="matchClose" type="button">Close</button>
+      </div>
+      <div id="matchBody"></div>
+    </div>
+  </div>
+
+  <script>
+    /* Plays the sign in / create account transition whenever the existing toggle changes the form text. */
+    (function () {
+      var card = document.querySelector('.auth-card');
+      var text = document.getElementById('switchText');
+      var btn = document.getElementById('switchBtn');
+      if (!card || !text || !btn) return;
+      var timer;
+      function play() {
+        card.classList.remove('is-swapping');
+        void card.offsetWidth;
+        card.classList.add('is-swapping');
+        clearTimeout(timer);
+        timer = setTimeout(function () { card.classList.remove('is-swapping'); }, 800);
+      }
+      var opts = { childList: true, characterData: true, subtree: true };
+      var mo = new MutationObserver(play);
+      mo.observe(text, opts);
+      mo.observe(btn, opts);
+    })();
+  </script>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
