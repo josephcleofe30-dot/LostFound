@@ -70,6 +70,7 @@
       <div class="tabs" role="tablist">
         <button class="tab active" type="button" role="tab" data-tab="found">Submit found item</button>
         <button class="tab" type="button" role="tab" data-tab="lost">Submit lost item request</button>
+        <button class="tab" type="button" role="tab" data-tab="activity">My requests <span class="count-pill" id="activityCount" hidden>0</span></button>
       </div>
 
       <!-- Found item -->
@@ -219,6 +220,16 @@
           <p class="form-ok" id="lostOk" role="status" hidden></p>
           <button class="btn btn-primary" id="lostSubmit" type="submit">Send lost item request</button>
         </form>
+      </div>
+
+      <!-- My requests -->
+      <div class="panel" id="panel-activity" role="tabpanel" hidden>
+        <h3>My requests</h3>
+        <p class="muted">Track your reports and see when an admin finds a match.</p>
+        <h4>Lost item requests</h4>
+        <div class="stack" id="myLostList"></div>
+        <h4>Found item reports</h4>
+        <div class="stack" id="myFoundList"></div>
       </div>
     </section>
 
