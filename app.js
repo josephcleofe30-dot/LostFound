@@ -24,12 +24,6 @@ import {
   Timestamp,
   serverTimestamp,
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-import {
-  getStorage,
-  ref as storageRef,
-  uploadBytes,
-  getDownloadURL,
-} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js";
 
 /* ---------- Firebase config: paste yours from Project settings ---------- */
 const firebaseConfig = {
@@ -44,10 +38,6 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app);
-const storage = getStorage(app);
-// Fail fast instead of retrying for minutes when the bucket is missing or blocked
-storage.maxUploadRetryTime = 15000;
-storage.maxOperationRetryTime = 15000;
 let currentUser = null;
 
 /* ---------- DOM ---------- */
@@ -252,28 +242,33 @@ function capTimeInputs() {
 }
 capTimeInputs();
 
-// Shrinks phone photos (often 4-10 MB) to ~1280px JPEG before upload
-async function compressImage(file, maxSide = 1280, quality = 0.8) {
+// Photos are stored inside the Firestore document as small JPEG data URLs
+// (no Cloud Storage). Each photo is shrunk until it is under ~150 KB.
+const MAX_PHOTO_CHARS = 200000;
+
+async function photoToDataUrl(file) {
   const bitmap = await createImageBitmap(file);
-  const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
-  const canvas = document.createElement("canvas");
-  canvas.width = Math.round(bitmap.width * scale);
-  canvas.height = Math.round(bitmap.height * scale);
-  canvas.getContext("2d").drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  let side = 640;
+  let quality = 0.7;
+  let dataUrl = "";
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const scale = Math.min(1, side / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+    canvas.getContext("2d").drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    dataUrl = canvas.toDataURL("image/jpeg", quality);
+    if (dataUrl.length <= MAX_PHOTO_CHARS) break;
+    side = Math.round(side * 0.8);
+    quality = Math.max(0.4, quality - 0.1);
+  }
   bitmap.close?.();
-  return new Promise((resolve, reject) => {
-    canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error("compress failed"))), "image/jpeg", quality);
-  });
+  if (dataUrl.length > MAX_PHOTO_CHARS) throw Object.assign(new Error("photo too large"), { code: "photo-too-large" });
+  return dataUrl;
 }
 
-async function uploadPhotos(files, uid) {
-  const stamp = Date.now();
-  return Promise.all(files.map(async (file, i) => {
-    const blob = await compressImage(file);
-    const fileRef = storageRef(storage, `uploads/${uid}/${stamp}-${i}.jpg`);
-    await uploadBytes(fileRef, blob, { contentType: "image/jpeg" });
-    return getDownloadURL(fileRef);
-  }));
+async function uploadPhotos(files) {
+  return Promise.all(files.map(photoToDataUrl));
 }
 
 // Reads the shared fields of either form (prefix is "found" or "lost")
@@ -302,10 +297,7 @@ function validateFields(f) {
 }
 
 function uploadErrorMessage(err) {
-  if (err?.code === "storage/retry-limit-exceeded" || err?.code === "storage/bucket-not-found" || err?.code === "storage/project-not-found") {
-    return "Photo upload couldn't reach Firebase Storage. Check that Storage is enabled for this project and that the bucket name in app.js is correct.";
-  }
-  if (err?.code === "storage/unauthorized") return "Photo upload was blocked. Check your Storage rules.";
+  if (err?.code === "photo-too-large" || err?.code === "invalid-argument") return "A photo is too large to save. Try again with different photos.";
   if (err?.code === "permission-denied") return "You don't have permission to submit. Check your Firestore rules.";
   if (err?.code === "failed-precondition") return "Firestore needs an index for this query. Open the browser console and click the link in the error.";
   return "Couldn't submit. Check your connection and try again.";
@@ -341,9 +333,9 @@ $("foundForm").addEventListener("submit", async (e) => {
 
   const btn = $("foundSubmit");
   btn.disabled = true;
-  btn.textContent = "Uploading photos…";
+  btn.textContent = "Processing photos…";
   try {
-    const imageUrls = await uploadPhotos(foundFiles, currentUser.uid);
+    const imageUrls = await uploadPhotos(foundFiles);
     btn.textContent = "Saving…";
     await addDoc(collection(db, "found_items"), {
       userId: currentUser.uid,
@@ -443,8 +435,8 @@ $("lostForm").addEventListener("submit", async (e) => {
     if (await refreshLostLimit()) return;
 
     btn.disabled = true;
-    btn.textContent = lostFiles.length ? "Uploading photos…" : "Saving…";
-    const imageUrls = lostFiles.length ? await uploadPhotos(lostFiles, currentUser.uid) : [];
+    btn.textContent = lostFiles.length ? "Processing photos…" : "Saving…";
+    const imageUrls = lostFiles.length ? await uploadPhotos(lostFiles) : [];
     btn.textContent = "Saving…";
     await addDoc(collection(db, "lost_requests"), {
       userId: currentUser.uid,
@@ -512,7 +504,15 @@ function detailList(rows) {
 function photoRow(urls = []) {
   if (!urls.length) return null;
   return el("div", { class: "photo-row" }, urls.map((url) =>
-    el("a", { href: url, target: "_blank", rel: "noopener" }, el("img", { src: url, alt: "Item photo", loading: "lazy" }))
+    el("a", {
+      href: "#",
+      title: "Open full size",
+      onclick: async (e) => {
+        e.preventDefault();
+        const blob = await (await fetch(url)).blob();
+        window.open(URL.createObjectURL(blob), "_blank", "noopener");
+      },
+    }, el("img", { src: url, alt: "Item photo" }))
   ));
 }
 
